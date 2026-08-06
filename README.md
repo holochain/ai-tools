@@ -20,6 +20,18 @@ A Claude Code skill that encodes semantic Holochain knowledge — the parts that
 
 **Installation:** copy `skills/holochain-dev/` into `~/.claude/skills/` or wherever your Claude Code setup looks for skills. Eventual plan is to ship as an installable plugin.
 
+### [skills/upgrade-holochain-0.7](skills/upgrade-holochain-0.7/)
+
+A Claude Code skill for upgrading Holochain apps, libraries, and runtimes from 0.6 to 0.7. Encodes the [official upgrade guide](https://developer.holochain.org/resources/upgrade/upgrade-holochain-0.7/) plus field-tested knowledge from three real upgrades (presence: app DNA + tryorama tests; syn: zome + TS client-library stack; moss: Electron runtime + conductor management):
+
+- An ordered upgrade workflow with compile gates and a step-0 inventory that identifies which change classes apply before editing
+- The complete API-change catalog (action model rewrite, FlatOp renames, validation signatures, client 0.21, conductor config)
+- Proven migration patterns for the awkward spots: the `Link(OpLink::…)` nested match, `EntryCreationAction` replacement styles, clone-vs-borrow in `signal_action`
+- The gotchas the guide doesn't cover: the `@holochain-open-dev/tryorama` package swap, the client 0.21 `ActionData` type hole, dual-hdi graphs producing 0.6 WASM, untypechecked test code hiding runtime bombs, manifest schema strictness
+- A final grep sweep that catches what the compiler can't
+
+Intended as the companion the upgrade guide can point AI-assisted developers to.
+
 ### [notes/](notes/)
 
 Research and design documents from building the skill:
