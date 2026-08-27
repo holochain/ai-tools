@@ -54,17 +54,37 @@ Type renames:
 | `CreateLink` / `DeleteLink` | `CreateLinkData` / `DeleteLinkData` |
 | `EntryCreationAction` | `TypedAction<EntryCreationData>` |
 
-Accessor changes — common fields are now methods (or live under `.header`):
+Accessor changes — **`Action`'s own accessors did not change.** `Action` was an enum in
+0.6, so the common fields were always methods, with the same signatures in both
+versions:
 
 ```rust
-// 0.6
-action.author
-action.timestamp
-
-// 0.7
-action.author()
-action.timestamp()
+// holochain_integrity_types 0.6.3 AND 0.7.0 — identical
+pub fn author(&self) -> &AgentPubKey
+pub fn timestamp(&self) -> Timestamp
+pub fn action_seq(&self) -> u32
+pub fn prev_action(&self) -> Option<&ActionHash>
+pub fn entry_type(&self) -> Option<&EntryType>
 ```
+
+What changed is the **variant payload structs**, which used to repeat the common fields
+inline and no longer do:
+
+```rust
+// 0.6                              // 0.7
+pub struct Create {                 pub struct CreateData {
+    pub author: AgentPubKey,            pub entry_type: EntryType,
+    pub timestamp: Timestamp,           pub entry_hash: EntryHash,
+    pub action_seq: u32,            }
+    pub prev_action: ActionHash,    // common fields → ActionHeader,
+    pub entry_type: EntryType,      //   where prev_action is Option<ActionHash>
+    pub entry_hash: EntryHash,
+}
+```
+
+So `create.author` (a field on 0.6's `Create`) becomes `action.header.author` or
+`action.author()`. Code that already went through `Action` needs no edit here. See
+`zome-migration.md` for the typed-wrapper accessors, where three signatures did change.
 
 ## FlatOp renames
 

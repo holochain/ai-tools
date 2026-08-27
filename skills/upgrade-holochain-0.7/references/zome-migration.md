@@ -11,7 +11,7 @@ of errors on the first build; they fall into a small number of mechanical catego
 - [Integrity: FlatOp variant renames](#integrity-flatop-variant-renames)
 - [Integrity: link ops became a nested match](#integrity-link-ops-became-a-nested-match)
 - [Integrity: EntryCreationAction is gone](#integrity-entrycreationaction-is-gone)
-- [Integrity: common fields are methods now](#integrity-common-fields-are-methods-now)
+- [Integrity: common fields left the variant payloads](#integrity-common-fields-left-the-variant-payloads)
 - [Integrity: other renames and field moves](#integrity-other-renames-and-field-moves)
 - [Coordinator: signal_action and friends](#coordinator-signal_action-and-friends)
 - [Coordinator: other API changes](#coordinator-other-api-changes)
@@ -131,24 +131,78 @@ if !matches!(original_action.data, ActionData::Create(_) | ActionData::Update(_)
 ```
 
 With Style B, call sites that wrapped (`EntryCreationAction::Create(action)`) become
-`action.into()`. Prefer Style A for new code; use Style B when you want the smallest
-diff. Don't mix styles within one zome.
+`action.into()`.
 
-## Integrity: common fields are methods now
-
-`Action` is now `{ header: ActionHeader, data: ActionData }`. Common fields moved to the
-header and are exposed as methods returning references:
+Style B also costs you `entry_type()`. There is no `&EntryType` → `Option<&EntryType>`
+API change — every `TypedAction` impl in hdi 0.8 returns a plain reference:
 
 ```rust
-// 0.6                          // 0.7
-action.author                   action.author()        // returns &AgentPubKey — compare with &x
-action.timestamp                action.timestamp()
-action.action_seq               action.action_seq()
-action.prev_action              action.prev_action()   // returns Option<&ActionHash>!
+impl TypedAction<EntryCreationData> { pub fn entry_type(&self) -> &EntryType }
+impl TypedAction<CreateData>        { pub fn entry_type(&self) -> &EntryType }
+impl TypedAction<UpdateData>        { pub fn entry_type(&self) -> &EntryType }
 ```
 
-`prev_action()` returning an `Option` forces a new error path that 0.6 didn't have
-(e.g. in `OpActivity::CreateAgent` handling):
+`Option<&EntryType>` comes only from `Action::entry_type()`, which already returned an
+`Option` in 0.6. So this is purely a consequence of swapping `EntryCreationAction`
+(infallible `&EntryType`) for plain `Action`: match arms become
+`Some(EntryType::App(t)) =>` and `t` usually needs a clone.
+
+Prefer Style A for new code — it keeps `entry_type()` infallible along with the rest of
+the type safety; use Style B when you want the smallest diff. Don't mix styles within
+one zome.
+
+## Integrity: common fields left the variant payloads
+
+First, what did *not* change: **`Action`'s own accessors are identical in 0.6 and 0.7.**
+`Action` was an enum in 0.6, so `author()`, `timestamp()`, `action_seq()`,
+`prev_action()` and `entry_type()` were always methods — same names, same signatures,
+including `prev_action() -> Option<&ActionHash>` and `entry_type() -> Option<&EntryType>`.
+If your code went through `Action`, none of it needs touching.
+
+`Action` is now `{ header: ActionHeader, data: ActionData }`, and the actual break is one
+level down: the **variant payload structs** used to repeat the common fields inline, and
+their `*Data` replacements don't.
+
+```rust
+// 0.6                              // 0.7
+pub struct Create {                 pub struct CreateData {
+    pub author: AgentPubKey,            pub entry_type: EntryType,
+    pub timestamp: Timestamp,           pub entry_hash: EntryHash,
+    pub action_seq: u32,            }
+    pub prev_action: ActionHash,    // common fields → ActionHeader,
+    pub entry_type: EntryType,      //   where prev_action is Option<ActionHash>
+    pub entry_hash: EntryHash,
+}
+```
+
+So `create.author` becomes `action.header.author` (or `action.author()`), and
+`create.prev_action` — an infallible `ActionHash` field in 0.6 — becomes an `Option`.
+
+The typed wrapper changed too. 0.6's `EntryCreationAction` and 0.7's `TypedAction<D>`
+both expose accessors, but three signatures differ:
+
+| accessor | 0.6 `EntryCreationAction` | 0.7 `TypedAction<D>` |
+|---|---|---|
+| `author()` | `&AgentPubKey` | `&AgentPubKey` — unchanged |
+| `timestamp()` | `&Timestamp` | `Timestamp` (by value) |
+| `action_seq()` | `&u32` | `u32` (by value) |
+| `prev_action()` | `&ActionHash` | **`Option<&ActionHash>`** |
+
+The by-value returns mean a stray `*` or `&` on the old reference-returning call sites
+now fails to compile — mechanical, but easy to misread as something deeper.
+
+That last row is what forces a genuinely new error path, because the op variants hand
+you a payload struct rather than an `Action`:
+
+```rust
+// hdi 0.7.3 (0.6 line)                 // hdi 0.8.0 (0.7)
+OpActivity::CreateAgent {                OpActivity::CreateAgent {
+    agent: AgentPubKey,                      agent: AgentPubKey,
+    action: Create,                          action: TypedAction<CreateData>,
+}   // Create.prev_action: ActionHash    }   // .prev_action(): Option<&ActionHash>
+```
+
+0.6's field was infallible, so the genesis case now has to be handled explicitly:
 
 ```rust
 let prev_action_hash = action.prev_action().cloned().ok_or(wasm_error!(
@@ -172,9 +226,7 @@ method/header = common fields.
   action.data.original_action_address.clone()
   delete_entry.action.data.deletes_address.clone()
   ```
-- **`entry_type()` returns `Option<&EntryType>`** (was `&EntryType` on
-  `EntryCreationAction`): patterns become `Some(EntryType::App(t)) =>` and `t` usually
-  needs a clone. Entry visibility moved: read `app_entry_type.visibility`, not
+- **Entry visibility moved:** read `app_entry_type.visibility`, not
   `action.entry_type().visibility()`.
 - **`OpRecord` variants dropped redundant hash fields** — read them off the action:
   ```rust

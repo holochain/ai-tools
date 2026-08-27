@@ -125,7 +125,10 @@ After everything compiles and before declaring done:
 
 ```bash
 # stale 0.6 action-shape accesses (runtime bombs in untypechecked code):
-grep -rn '\.action\.author\b\|\.action\.timestamp\b\|hashed\.content\.\(author\|timestamp\|type\)\b\|SignedActionHashed<' \
+grep -rnE '\.(action|content)\.(author|timestamp|action_seq|prev_action)\b|hashed\.content\.(author|timestamp|action_seq|prev_action|type)\b|SignedActionHashed<' \
+  --include='*.ts' -r . --exclude-dir=node_modules
+# variant fields that moved under .data (noisier — triage, don't assume):
+grep -rnE '\.(entry_type|entry_hash|original_action_address|original_entry_address|deletes_address|deletes_entry_address|base_address|target_address|link_add_address|zome_index|link_type)\b' \
   --include='*.ts' -r . --exclude-dir=node_modules
 # stale Rust patterns that can hide in cfg'd-out or unbuilt code:
 grep -rn 'EntryCreationAction\|FlatOp::Store\|FlatOp::Register\|block_agent' --include='*.rs' -r . --exclude-dir=target

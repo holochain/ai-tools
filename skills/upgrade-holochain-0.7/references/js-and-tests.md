@@ -147,13 +147,20 @@ helpers survive the upgrade silently and only explode at runtime (e.g.
 one of the three reference upgrades. After the mechanical migration, sweep the whole
 repo — including `tests/`:
 
-```
-grep -rn '\.action\.author\b\|\.action\.timestamp\b' --include='*.ts' .
-grep -rn 'hashed\.content\.\(author\|timestamp\|type\)\b' --include='*.ts' .
+```bash
+# high signal — header fields, on action-shaped access paths
+grep -rnE '\.(action|content)\.(author|timestamp|action_seq|prev_action)\b' --include='*.ts' .
+grep -rnE 'hashed\.content\.(author|timestamp|action_seq|prev_action|type)\b' --include='*.ts' .
 grep -rn 'SignedActionHashed<' --include='*.ts' .
+
+# broad backstop — variant fields that moved under .data
+# (noisy: entry_type/tag/link_type collide with app-level names — triage, don't assume)
+grep -rnE '\.(entry_type|entry_hash|original_action_address|original_entry_address|deletes_address|deletes_entry_address|base_address|target_address|link_add_address|zome_index|link_type|tag)\b' --include='*.ts' .
 ```
 
-Every hit should either go through `.header.` / `.data.` or be justified.
+Every hit from the first group should either go through `.header.` / `.data.` or be
+justified; the second group needs triage rather than blanket edits. The data-field list
+is the complete set from the `*Data` structs in `holochain_integrity_types` 0.7.0.
 
 ## Network stats and debugging tooling
 
