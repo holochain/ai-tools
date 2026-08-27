@@ -202,7 +202,8 @@ OpActivity::CreateAgent {                OpActivity::CreateAgent {
 }   // Create.prev_action: ActionHash    }   // .prev_action(): Option<&ActionHash>
 ```
 
-0.6's field was infallible, so the genesis case now has to be handled explicitly:
+0.6's `prev_action` field was infallible, so the genesis case now has to be handled
+explicitly:
 
 ```rust
 let prev_action_hash = action.prev_action().cloned().ok_or(wasm_error!(
